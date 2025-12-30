@@ -117,7 +117,7 @@ void scan_buffer(unsigned char * buffer, size_t size, size_t offset)
         break;
     aes192_schedule *schedule192 = malloc(sizeof(struct aes192_schedule));
     memcpy(schedule192->schedule, buffer + pos, AES192_KEY_SIZE);
-    for (int i=0; i < 2; i++)
+    for (int i=0; i < 4; i++)
     {
         schedule192 = reconstruct_aes192(buffer + pos, schedule192, i, 0);
         if (schedule192->boolean == TRUE)
