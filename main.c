@@ -13,12 +13,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <limits.h>
 
 #include "aes.h"
 
 // Use a 10MB buffer
 #define BUFFER_SIZE  10485760
 #define WINDOW_SIZE  AES256_KEY_SCHEDULE_SIZE
+
+char export_path[PATH_MAX];
+
+char * export_directory = NULL;
+
+uint8_t count=0;
+
+aes128_schedule *schedule128;
+aes192_schedule *schedule192;
+aes256_schedule *schedule256;
 
 /// @brief Hex-dump sz bytes of data to standard output
 ///
@@ -86,10 +97,16 @@ int entropy(const unsigned char * buffer, size_t size,int first)
 
 void scan_buffer(unsigned char * buffer, size_t size, size_t offset)
 {
-  uint8_t count=0;
+  FILE* export = NULL;
   uint64_t pos;
   for (pos = 0 ; pos < size ; ++pos)
   {
+    if (export_directory != NULL)
+    {
+        if (export_directory[strlen(export_directory)-1] != '/') snprintf(export_path, PATH_MAX, "%s//%d.bin", export_directory, count);
+        else snprintf(export_path, PATH_MAX, "%s%d.bin", export_directory, count);
+        export = fopen(export_path, "wb");
+    }
     int first = FALSE;
     if (0 == offset +pos)
       first = TRUE;
@@ -98,7 +115,6 @@ void scan_buffer(unsigned char * buffer, size_t size, size_t offset)
     
     if (pos == size-AES128_KEY_SCHEDULE_SIZE+1)
         break;
-    aes128_schedule *schedule128 = malloc(sizeof(struct aes128_schedule));
     memcpy(schedule128->schedule, buffer + pos, AES128_KEY_SIZE);
     for (int i=0; i < 4; i++)
     {
@@ -109,13 +125,18 @@ void scan_buffer(unsigned char * buffer, size_t size, size_t offset)
                 offset + pos);
             display_key(schedule128->schedule, AES128_KEY_SIZE);
             pos += AES128_KEY_SCHEDULE_SIZE - 1;
+            count++;
+            if (export)
+            {
+                fwrite(schedule128->schedule, AES128_KEY_SIZE, 1, export);
+                fclose(export);
+                export = NULL;
+            }
             break;
         }
     }
-    free(schedule128);
     if (pos == size-AES192_KEY_SCHEDULE_SIZE+1)
-        break;
-    aes192_schedule *schedule192 = malloc(sizeof(struct aes192_schedule));
+        continue;
     memcpy(schedule192->schedule, buffer + pos, AES192_KEY_SIZE);
     for (int i=0; i < 4; i++)
     {
@@ -126,13 +147,18 @@ void scan_buffer(unsigned char * buffer, size_t size, size_t offset)
                 offset + pos);
             display_key(schedule192->schedule, AES192_KEY_SIZE);
             pos += AES192_KEY_SCHEDULE_SIZE - 1;
+            count++;
+            if (export)
+            {
+                fwrite(schedule192->schedule, AES192_KEY_SIZE, 1, export);
+                fclose(export);
+                export = NULL;
+            }
             break;
         }
     }
-    free(schedule192);
     if (pos == size-AES256_KEY_SCHEDULE_SIZE+1)
-        break;
-    aes256_schedule *schedule256 = malloc(sizeof(struct aes256_schedule));
+        continue;
     memcpy(schedule256->schedule, buffer + pos, AES256_KEY_SIZE);
     for (int i=0; i < 4; i++)
     {
@@ -143,10 +169,16 @@ void scan_buffer(unsigned char * buffer, size_t size, size_t offset)
                 offset + pos);
             display_key(schedule256->schedule, AES256_KEY_SIZE);
             pos += AES256_KEY_SCHEDULE_SIZE - 1;
+            count++;
+            if (export)
+            {
+                fwrite(schedule256->schedule, AES256_KEY_SIZE, 1, export);
+                fclose(export);
+                export = NULL;
+            }
             break;
         }
     }
-    free(schedule256);
   }
 }
 
@@ -210,26 +242,39 @@ int scan_file(char * fn)
   return FALSE;
 }
 
-
 int main(int argc, char **argv)
 {
   if (argc < 2)
   {
     printf("CryptoSift version 2.0 by Gabriel Bauer\n");
     printf("Searches for and reconstructs AES-128, AES-192, and AES-256 keys\n");
-    printf("The program then exports all found keys to a directory as binary files\n");
+    printf("The program can export all found keys to a directory as binary files\n");
     printf("Based upon FindAES by Jesse Kornblum\n\n");
 
     printf ("Usage: cryptosift [FILES]\n");
+    printf("Options: -ek [EXPORT DIRECTORY] : Exports all found keys to the specified directory\n");
     return EXIT_FAILURE;
   }
+
+  schedule128 = malloc(sizeof(struct aes128_schedule));
+  schedule192 = malloc(sizeof(struct aes192_schedule));
+  schedule256 = malloc(sizeof(struct aes256_schedule));
 
   int i = 1;
   while (i < argc)
   {
-    scan_file(argv[i]);
+    if (!strcmp(argv[i], "-ek"))
+    {
+        export_directory = malloc(strlen(argv[++i])+1);
+        strcpy(export_directory, argv[i]);
+    }
+    else scan_file(argv[i]);
     ++i;
   }
+
+  free(schedule128);
+  free(schedule192);
+  free(schedule256);
 
   return EXIT_SUCCESS;
 }
